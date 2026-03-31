@@ -1,168 +1,229 @@
+const SIMULATION_TIME_SECONDS = 20 * 60; // 20 minutes
+let remainingSeconds = SIMULATION_TIME_SECONDS;
+let isSimulationRunning = false;
+let entities = [];
+let simInterval;
+
 const startBtn = document.getElementById('start-btn');
-const restartBtn = document.getElementById('restart-btn');
-const startScreen = document.getElementById('start-screen');
-const container = document.getElementById('animation-container');
-const timerProgress = document.getElementById('timer-progress');
+const uiLayer = document.getElementById('ui-layer');
+const timerSpan = document.querySelector('#timer-box span');
+const warLog = document.getElementById('war-log');
+const entitiesLayer = document.getElementById('entities-layer');
+const projectilesLayer = document.getElementById('projectiles-layer');
 
-const tr = document.getElementById('turkey');
-const aze = document.getElementById('azerbaijan');
-const isr = document.getElementById('israel');
-const usa = document.getElementById('america');
-const ger = document.getElementById('germany');
-const clashEffect = document.getElementById('clash-effect');
+// Using the requested 5 countries
+const countryTypes = ['turkey', 'azerbaijan', 'israel', 'america', 'germany'];
 
-const dTr = document.getElementById('turkey-dialogue');
-const dAze = document.getElementById('aze-dialogue');
-const dIsr = document.getElementById('israel-dialogue');
-const dUsa = document.getElementById('america-dialogue');
-const dGer = document.getElementById('germany-dialogue');
+// Faction Dialogues
+const dialogues = {
+    'turkey': ['Hücum!', 'İleri!', 'Siper al!', 'Hedefi vurun!', 'Asla pes etme!'],
+    'azerbaijan': ['Qardaşlar irəli!', 'Dayanmayın!', 'Atəş!', 'Hədəf vuruldu!'],
+    'america': ['Freedom!', 'Air strike incoming!', 'Cover me!', 'Target locked!'],
+    'israel': ['Iron Dome active!', 'Defend the position!', 'Fire!', 'Engaging target!'],
+    'germany': ['Achtung!', 'Vorwärts!', 'Feuer!', 'Deckung!']
+};
 
-const theEnd = document.getElementById('the-end');
-
-let blinkInterval = null;
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-function showSay(element, text, duration) {
-    element.textContent = text;
-    element.classList.add('show-dialogue');
-    setTimeout(() => {
-        element.classList.remove('show-dialogue');
-    }, duration);
+function formatTime(sec) {
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
 }
 
-function resetAnimation() {
-    if (blinkInterval) clearInterval(blinkInterval);
+function logCombat(msg) {
+    const p = document.createElement('p');
+    p.textContent = `[${formatTime(remainingSeconds)}] ${msg}`;
+    warLog.appendChild(p);
+    warLog.scrollTop = warLog.scrollHeight;
     
-    [tr, aze, isr, usa, ger].forEach(ball => {
-        ball.className = `countryball ${ball.id === 'america' ? 'america' : ball.id === 'azerbaijan' ? 'azerbaijan' : ball.id === 'turkey' ? 'turkey' : ball.id === 'israel' ? 'israel' : 'germany'}`;
-        ball.style = '';
-    });
-    
-    [dTr, dAze, dIsr, dUsa, dGer].forEach(d => d.classList.remove('show-dialogue'));
-    clashEffect.classList.remove('show-clash');
-    
-    theEnd.style.opacity = '0';
-    theEnd.style.pointerEvents = 'none';
-    timerProgress.style.transition = 'none';
-    timerProgress.style.width = '0%';
+    // Limits log size
+    if (warLog.childElementCount > 50) {
+        warLog.removeChild(warLog.firstChild);
+    }
 }
 
-async function runTimeline() {
-    resetAnimation();
+function createUnit(type, x, y) {
+    const ball = document.createElement('div');
+    ball.className = `countryball ${type}`;
+    ball.style.left = `${x}px`;
+    ball.style.top = `${y}px`;
     
-    // Timer 35 seconds
+    // Eyes
+    const eyesContainer = document.createElement('div');
+    eyesContainer.className = 'eyes';
+    const eye1 = document.createElement('div'); eye1.className = 'eye';
+    const eye2 = document.createElement('div'); eye2.className = 'eye';
+    eyesContainer.appendChild(eye1);
+    eyesContainer.appendChild(eye2);
+    ball.appendChild(eyesContainer);
+    
+    entitiesLayer.appendChild(ball);
+    
+    return { 
+        id: Math.random().toString(36).substr(2, 9),
+        el: ball, 
+        type: type, 
+        x: x, 
+        y: y, 
+        hp: 100, 
+        isDead: false 
+    };
+}
+
+function spawnArmies() {
+    entitiesLayer.innerHTML = ''; 
+    entities = [];
+    
+    const cw = window.innerWidth;
+    const ch = window.innerHeight;
+
+    // Spawn 10 units per faction globally
+    for(let c of countryTypes) {
+        for(let i=0; i<10; i++) {
+            // Keep them slightly away from screen edges
+            const rx = Math.random() * (cw - 150) + 75;
+            const ry = Math.random() * (ch - 150) + 75;
+            entities.push(createUnit(c, rx, ry));
+        }
+    }
+}
+
+function showDialogue(unit, text) {
+    if (unit.isDead) return;
+    const bubble = document.createElement('div');
+    bubble.className = 'dialogue';
+    bubble.textContent = text;
+    unit.el.appendChild(bubble);
+    
     setTimeout(() => {
-        timerProgress.style.transition = 'width 35s linear';
-        timerProgress.style.width = '100%';
-    }, 50);
+        if (unit.el.contains(bubble)) {
+            unit.el.removeChild(bubble);
+        }
+    }, 2500);
+}
 
-    blinkInterval = setInterval(() => {
-        const balls = [tr, aze, isr, usa, ger];
-        const randomBall = balls[Math.floor(Math.random() * balls.length)];
-        randomBall.classList.add('blink');
-        setTimeout(() => randomBall.classList.remove('blink'), 150);
-    }, 1500);
+function createExplosion(x, y) {
+    const exp = document.createElement('div');
+    exp.className = 'explosion';
+    exp.style.left = `${x}px`;
+    exp.style.top = `${y}px`;
+    projectilesLayer.appendChild(exp); // Put explosions in projectile layer above entities
+    setTimeout(() => exp.remove(), 500);
+}
 
-    // 0s: start
-    isr.classList.add('roll-in-right');
-    setTimeout(() => usa.classList.add('roll-in-right'), 500);
+function fireWeapon(attacker, target) {
+    const proj = document.createElement('div');
+    proj.className = Math.random() > 0.5 ? 'projectile missile' : 'projectile';
+    proj.style.left = `${attacker.x}px`;
+    proj.style.top = `${attacker.y}px`;
     
-    await wait(3000); // 3.0s
-    showSay(dIsr, "Buradaki her şey bizim!", 2000);
-    isr.classList.add('angry-eyes');
-    usa.classList.add('angry-eyes');
+    const angle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
+    proj.style.transform = `rotate(${angle}rad)`;
     
-    await wait(2500); // 5.5s
-    tr.classList.add('roll-in-left');
-    setTimeout(() => aze.classList.add('roll-in-left'), 500);
+    projectilesLayer.appendChild(proj);
 
-    await wait(2500); // 8.0s
-    tr.classList.add('angry-eyes');
-    aze.classList.add('angry-eyes');
-    showSay(dTr, "Haddinizi bilin!", 2000);
-    tr.classList.add('jump');
-    setTimeout(() => tr.classList.remove('jump'), 600);
+    // CSS Transition handles the animation
+    setTimeout(() => {
+        proj.style.left = `${target.x}px`;
+        proj.style.top = `${target.y}px`;
+    }, 20);
 
-    await wait(2500); // 10.5s
-    showSay(dUsa, "We have air support!", 2000);
-    usa.classList.add('jump');
-    setTimeout(() => usa.classList.remove('jump'), 600);
-    
-    await wait(2500); // 13.0s
-    showSay(dAze, "Qardaş, mən buradayam!", 2000);
-    aze.classList.add('jump');
-    setTimeout(() => aze.classList.remove('jump'), 600);
+    // Hit registration
+    setTimeout(() => {
+        proj.remove();
+        if (!target.isDead) {
+            target.hp -= 25; // 4 hits to kill
+            createExplosion(target.x, target.y);
+            
+            target.el.classList.add('angry');
+            setTimeout(() => target.el.classList.remove('angry'), 400);
 
-    await wait(2500); // 15.5s
-    isr.classList.add('shake');
-    showSay(dIsr, "Sistemler devrede!", 2000);
+            if (target.hp <= 0) {
+                target.isDead = true;
+                target.el.classList.add('dead');
+                // Target sinks/stays dead
+                logCombat(`${attacker.type.toUpperCase()} birim, ${target.type.toUpperCase()} birimi yok etti!`);
+            }
+        }
+    }, 300); // Must match CSS transition time approx
+}
 
-    await wait(2500); // 18.0s
-    // Germany drops in from sky
-    ger.style.transition = 'bottom 1s cubic-bezier(0.5, 0, 1, 1)';
-    ger.style.bottom = '180px';
+function engineTick() {
+    const aliveUnits = entities.filter(e => !e.isDead);
+    if (aliveUnits.length <= 1) {
+        if (aliveUnits.length === 1 && remainingSeconds > 0) {
+            logCombat(`${aliveUnits[0].type.toUpperCase()} DÜNYA HAKİMİYETİNİ SAĞLADI!`);
+            endSimulation();
+        }
+        return; 
+    }
     
-    await wait(1000); // 19.0s
-    ger.classList.add('angry-eyes');
-    showSay(dGer, "HALT! Ne yapıyorsunuz?", 2500);
-    
-    // They all look at germany
-    [tr, aze, isr, usa].forEach(b => b.classList.remove('angry-eyes'));
+    // Give 3 random alive units a chance to act per second
+    for(let i=0; i<3; i++) {
+        const actor = aliveUnits[Math.floor(Math.random() * aliveUnits.length)];
+        if (!actor) continue;
+        
+        // Find targets (different teams)
+        const enemies = aliveUnits.filter(e => e.type !== actor.type);
+        if (enemies.length === 0) continue; 
+        
+        const target = enemies[Math.floor(Math.random() * enemies.length)];
 
-    await wait(3000); // 22.0s
-    [tr, aze, isr, usa].forEach(b => b.classList.add('angry-eyes'));
-    showSay(dUsa, "Stay out of this, Germany!", 2000);
-    
-    await wait(2500); // 24.5s
-    showSay(dTr, "Bu işe karışma Almanya!", 2000);
-    tr.classList.add('jump');
+        const actionRoll = Math.random();
 
-    await wait(2500); // 27.0s
-    ger.classList.add('sad-eyes');
-    ger.classList.remove('angry-eyes');
-    showSay(dGer, "Ach scheiße...", 2000);
+        if (actionRoll < 0.35) {
+            // 35% Chance to Attack
+            actor.el.classList.add('angry');
+            setTimeout(() => actor.el.classList.remove('angry'), 500);
+            fireWeapon(actor, target);
+        } else if (actionRoll < 0.75) {
+            // 40% Chance to Move Randomly within a radius
+            const moveDist = 150;
+            let nx = actor.x + (Math.random() * moveDist * 2 - moveDist);
+            let ny = actor.y + (Math.random() * moveDist * 2 - moveDist);
+            
+            // Keep in bounds
+            nx = Math.max(50, Math.min(window.innerWidth - 50, nx));
+            ny = Math.max(50, Math.min(window.innerHeight - 50, ny));
+            
+            actor.x = nx;
+            actor.y = ny;
+            actor.el.style.left = `${nx}px`;
+            actor.el.style.top = `${ny}px`;
+        } else {
+            // 25% Chance to speak
+            const texts = dialogues[actor.type];
+            showDialogue(actor, texts[Math.floor(Math.random() * texts.length)]);
+        }
+    }
+}
 
-    await wait(2500); // 29.5s
-    showSay(dTr, "Saldır qardaşım!", 2000);
-    showSay(dUsa, "Attack!", 2000);
+function runSimulation() {
+    remainingSeconds--;
+    timerSpan.textContent = formatTime(remainingSeconds);
 
-    await wait(2000); // 31.5s
-    tr.classList.add('clash-right');
-    aze.classList.add('clash-right');
-    isr.classList.add('clash-left');
-    usa.classList.add('clash-left');
-    
-    await wait(300); // 31.8s
-    clashEffect.classList.add('show-clash');
-    
-    // Germany squished
-    ger.className = 'countryball germany squish dead-eyes';
-    
-    await wait(1000); // 32.8s
-    clashEffect.classList.remove('show-clash');
-    
-    tr.classList.remove('clash-right');
-    aze.classList.remove('clash-right');
-    isr.classList.remove('clash-left');
-    usa.classList.remove('clash-left');
+    if (remainingSeconds <= 0) {
+        endSimulation();
+        return;
+    }
 
-    tr.classList.add('retreat-left');
-    aze.classList.add('retreat-left');
-    isr.classList.add('retreat');
-    usa.classList.add('retreat');
-    
-    await wait(2200); // 35.0s
-    clearInterval(blinkInterval);
-    theEnd.style.opacity = '1';
-    theEnd.style.pointerEvents = 'auto';
+    engineTick();
+}
+
+function endSimulation() {
+    clearInterval(simInterval);
+    isSimulationRunning = false;
+    document.getElementById('the-end').style.opacity = '1';
+    document.getElementById('the-end').style.pointerEvents = 'auto';
+    logCombat("SİMÜLASYON TAMAMLANDI VEYA DÜNYA HAKİMİYETİ SAĞLANDI.");
 }
 
 startBtn.addEventListener('click', () => {
-    startScreen.style.display = 'none';
-    container.style.display = 'block';
-    runTimeline();
-});
-
-restartBtn.addEventListener('click', () => {
-    runTimeline();
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('simulation-container').style.display = 'block';
+    
+    spawnArmies();
+    logCombat("Savaş simülasyonu başlatıldı. Harita taraması devrede.");
+    
+    simInterval = setInterval(runSimulation, 1000);
+    isSimulationRunning = true;
 });

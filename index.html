@@ -3,36 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>20 Dakikalık Dünya Haritası Savaş Simülasyonu</title>
+    <title>Countryballs Shorts Sürümü</title>
+    <!-- Teko and Arial fonts for meme text format -->
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="start-screen">
-        <h1>Küresel Savaş Simülatörü</h1>
-        <p>Dünya Haritası Üzerinde Kesintisiz 20 Dakikalık Çatışma Döngüsü</p>
-        <button id="start-btn">Simülasyonu Başlat</button>
+        <h1>Countryballs Map Video</h1>
+        <p>20 Dakikalık YouTube Shorts Konsepti</p>
+        <button id="start-btn">Hikayeyi Başlat</button>
     </div>
 
-    <div id="simulation-container">
-        <!-- Harita arkaplanı -->
-        <div id="map-layer"></div>
-        <!-- Karakterler (Ordular) -->
-        <div id="entities-layer"></div>
-        <!-- Füzeler ve Atışlar -->
-        <div id="projectiles-layer"></div>
+    <!-- 9:16 Dikey Formatta Akış Containerı -->
+    <div id="shorts-container">
+        <!-- Harita arkaplanı (Zemin) -->
+        <div id="map-bg"></div>
         
-        <!-- Yüzen UI Arayüzü -->
-        <div id="ui-layer">
-            <div class="ui-panel">
-                <div id="timer-box">Savaş Süresi: <span>20:00</span></div>
-                <div id="war-log"></div>
-            </div>
-        </div>
-        
-        <div id="the-end">
-            <h2>SİMÜLASYON TAMAMLANDI</h2>
-            <p>20 dakikalık savaş bitti.</p>
-        </div>
+        <!-- Ülkeler ve Diyaloglar Katmanı -->
+        <div id="scene-layer"></div>
     </div>
 
     <script src="script.js"></script>

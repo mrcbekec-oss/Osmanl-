@@ -1,229 +1,154 @@
-const SIMULATION_TIME_SECONDS = 20 * 60; // 20 minutes
-let remainingSeconds = SIMULATION_TIME_SECONDS;
-let isSimulationRunning = false;
-let entities = [];
-let simInterval;
-
 const startBtn = document.getElementById('start-btn');
-const uiLayer = document.getElementById('ui-layer');
-const timerSpan = document.querySelector('#timer-box span');
-const warLog = document.getElementById('war-log');
-const entitiesLayer = document.getElementById('entities-layer');
-const projectilesLayer = document.getElementById('projectiles-layer');
+const shortsContainer = document.getElementById('shorts-container');
+const sceneLayer = document.getElementById('scene-layer');
+const startScreen = document.getElementById('start-screen');
 
-// Using the requested 5 countries
-const countryTypes = ['turkey', 'azerbaijan', 'israel', 'america', 'germany'];
-
-// Faction Dialogues
-const dialogues = {
-    'turkey': ['Hücum!', 'İleri!', 'Siper al!', 'Hedefi vurun!', 'Asla pes etme!'],
-    'azerbaijan': ['Qardaşlar irəli!', 'Dayanmayın!', 'Atəş!', 'Hədəf vuruldu!'],
-    'america': ['Freedom!', 'Air strike incoming!', 'Cover me!', 'Target locked!'],
-    'israel': ['Iron Dome active!', 'Defend the position!', 'Fire!', 'Engaging target!'],
-    'germany': ['Achtung!', 'Vorwärts!', 'Feuer!', 'Deckung!']
+// Karakter Tanımlamaları ve Başlangıç Koordinatları
+const templates = {
+    turkey: { 
+        id: 'turkey', type: 'turkey', initX: 160, initY: 400, 
+        html: `<div class="eyes"><div class="eye left"></div><div class="eye right"></div></div>
+               <div class="dialogue"></div><span class="turkey-star">★</span>` 
+    },
+    georgia: { 
+        id: 'georgia', type: 'georgia', initX: 300, initY: 260, 
+        html: `<div class="eyes"><div class="eye left"></div><div class="eye right"></div></div>
+               <div class="dialogue"></div>
+               <div class="geo-cross c1"></div><div class="geo-cross c2"></div><div class="geo-cross c3"></div><div class="geo-cross c4"></div>` 
+    },
+    azerbaijan: { 
+        id: 'azerbaijan', type: 'azerbaijan', initX: 360, initY: 480, 
+        html: `<div class="eyes"><div class="eye left"></div><div class="eye right"></div></div>
+               <div class="dialogue"></div>` 
+    }
 };
 
-function formatTime(sec) {
-    const m = Math.floor(sec / 60).toString().padStart(2, '0');
-    const s = (sec % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-}
+let actors = {};
 
-function logCombat(msg) {
-    const p = document.createElement('p');
-    p.textContent = `[${formatTime(remainingSeconds)}] ${msg}`;
-    warLog.appendChild(p);
-    warLog.scrollTop = warLog.scrollHeight;
-    
-    // Limits log size
-    if (warLog.childElementCount > 50) {
-        warLog.removeChild(warLog.firstChild);
+// Sahneler ve Diyaloglar (Görseldeki Formata Uygun Meme Konuşmaları)
+const scenarios = [
+    {
+        actors: ['georgia', 'turkey'],
+        lines: [
+            { a: 'georgia', t: "Gürcistan bir günlüğüne yerlerimizi değiştirelim mi?" },
+            { a: 'turkey', t: "Sen ciddi misin? Ne işin var denizle?" },
+            { a: 'georgia', t: "Hadi ama, Karadeniz bana da lazım!" },
+            { a: 'turkey', t: "Sınır ihlali yapma da canını yakmayayım!", angry: true }
+        ]
+    },
+    {
+        actors: ['turkey', 'azerbaijan'],
+        lines: [
+            { a: 'turkey', t: "Nasılsın qardaşım?" },
+            { a: 'azerbaijan', t: "Yaxşıyam! Kafkaslar güvendedir." },
+            { a: 'turkey', t: "Bölgede sıkıntı çıkaran var mı?" },
+            { a: 'azerbaijan', t: "Biz buradayken kimse ses çıkaramaz." }
+        ]
+    },
+    {
+        actors: ['georgia', 'azerbaijan'],
+        lines: [
+            { a: 'georgia', t: "Buralarda havalar iyice soğudu." },
+            { a: 'azerbaijan', t: "Bizde petrol var qonşu, ısınırız dert etme!" }
+        ]
     }
-}
+];
 
-function createUnit(type, x, y) {
+function createActor(tmpl) {
     const ball = document.createElement('div');
-    ball.className = `countryball ${type}`;
-    ball.style.left = `${x}px`;
-    ball.style.top = `${y}px`;
+    ball.className = `countryball ${tmpl.type}`;
+    ball.style.left = tmpl.initX + 'px';
+    ball.style.top = tmpl.initY + 'px';
+    ball.innerHTML = tmpl.html;
     
-    // Eyes
-    const eyesContainer = document.createElement('div');
-    eyesContainer.className = 'eyes';
-    const eye1 = document.createElement('div'); eye1.className = 'eye';
-    const eye2 = document.createElement('div'); eye2.className = 'eye';
-    eyesContainer.appendChild(eye1);
-    eyesContainer.appendChild(eye2);
-    ball.appendChild(eyesContainer);
-    
-    entitiesLayer.appendChild(ball);
-    
+    sceneLayer.appendChild(ball);
+
     return { 
-        id: Math.random().toString(36).substr(2, 9),
-        el: ball, 
-        type: type, 
-        x: x, 
-        y: y, 
-        hp: 100, 
-        isDead: false 
+        id: tmpl.id, el: ball, 
+        dlg: ball.querySelector('.dialogue'),
+        x: tmpl.initX, y: tmpl.initY
     };
 }
 
-function spawnArmies() {
-    entitiesLayer.innerHTML = ''; 
-    entities = [];
-    
-    const cw = window.innerWidth;
-    const ch = window.innerHeight;
-
-    // Spawn 10 units per faction globally
-    for(let c of countryTypes) {
-        for(let i=0; i<10; i++) {
-            // Keep them slightly away from screen edges
-            const rx = Math.random() * (cw - 150) + 75;
-            const ry = Math.random() * (ch - 150) + 75;
-            entities.push(createUnit(c, rx, ry));
-        }
+function initScene() {
+    sceneLayer.innerHTML = '';
+    actors = {};
+    for(let k in templates) {
+        actors[k] = createActor(templates[k]);
     }
 }
 
-function showDialogue(unit, text) {
-    if (unit.isDead) return;
-    const bubble = document.createElement('div');
-    bubble.className = 'dialogue';
-    bubble.textContent = text;
-    unit.el.appendChild(bubble);
-    
-    setTimeout(() => {
-        if (unit.el.contains(bubble)) {
-            unit.el.removeChild(bubble);
-        }
-    }, 2500);
-}
+// Yardımcı bekleme fonksiyonu
+const wait = ms => new Promise(res => setTimeout(res, ms));
 
-function createExplosion(x, y) {
-    const exp = document.createElement('div');
-    exp.className = 'explosion';
-    exp.style.left = `${x}px`;
-    exp.style.top = `${y}px`;
-    projectilesLayer.appendChild(exp); // Put explosions in projectile layer above entities
-    setTimeout(() => exp.remove(), 500);
-}
+async function playScenario(scene) {
+    // Aktif oyuncuları ön plana al
+    scene.actors.forEach(id => {
+        actors[id].el.style.zIndex = "40";
+    });
 
-function fireWeapon(attacker, target) {
-    const proj = document.createElement('div');
-    proj.className = Math.random() > 0.5 ? 'projectile missile' : 'projectile';
-    proj.style.left = `${attacker.x}px`;
-    proj.style.top = `${attacker.y}px`;
-    
-    const angle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
-    proj.style.transform = `rotate(${angle}rad)`;
-    
-    projectilesLayer.appendChild(proj);
-
-    // CSS Transition handles the animation
-    setTimeout(() => {
-        proj.style.left = `${target.x}px`;
-        proj.style.top = `${target.y}px`;
-    }, 20);
-
-    // Hit registration
-    setTimeout(() => {
-        proj.remove();
-        if (!target.isDead) {
-            target.hp -= 25; // 4 hits to kill
-            createExplosion(target.x, target.y);
-            
-            target.el.classList.add('angry');
-            setTimeout(() => target.el.classList.remove('angry'), 400);
-
-            if (target.hp <= 0) {
-                target.isDead = true;
-                target.el.classList.add('dead');
-                // Target sinks/stays dead
-                logCombat(`${attacker.type.toUpperCase()} birim, ${target.type.toUpperCase()} birimi yok etti!`);
-            }
-        }
-    }, 300); // Must match CSS transition time approx
-}
-
-function engineTick() {
-    const aliveUnits = entities.filter(e => !e.isDead);
-    if (aliveUnits.length <= 1) {
-        if (aliveUnits.length === 1 && remainingSeconds > 0) {
-            logCombat(`${aliveUnits[0].type.toUpperCase()} DÜNYA HAKİMİYETİNİ SAĞLADI!`);
-            endSimulation();
-        }
-        return; 
-    }
-    
-    // Give 3 random alive units a chance to act per second
-    for(let i=0; i<3; i++) {
-        const actor = aliveUnits[Math.floor(Math.random() * aliveUnits.length)];
-        if (!actor) continue;
+    for (let line of scene.lines) {
+        const actor = actors[line.a];
         
-        // Find targets (different teams)
-        const enemies = aliveUnits.filter(e => e.type !== actor.type);
-        if (enemies.length === 0) continue; 
+        if (line.angry) actor.el.classList.add('angry');
         
-        const target = enemies[Math.floor(Math.random() * enemies.length)];
-
-        const actionRoll = Math.random();
-
-        if (actionRoll < 0.35) {
-            // 35% Chance to Attack
-            actor.el.classList.add('angry');
-            setTimeout(() => actor.el.classList.remove('angry'), 500);
-            fireWeapon(actor, target);
-        } else if (actionRoll < 0.75) {
-            // 40% Chance to Move Randomly within a radius
-            const moveDist = 150;
-            let nx = actor.x + (Math.random() * moveDist * 2 - moveDist);
-            let ny = actor.y + (Math.random() * moveDist * 2 - moveDist);
-            
-            // Keep in bounds
-            nx = Math.max(50, Math.min(window.innerWidth - 50, nx));
-            ny = Math.max(50, Math.min(window.innerHeight - 50, ny));
-            
-            actor.x = nx;
-            actor.y = ny;
-            actor.el.style.left = `${nx}px`;
-            actor.el.style.top = `${ny}px`;
-        } else {
-            // 25% Chance to speak
-            const texts = dialogues[actor.type];
-            showDialogue(actor, texts[Math.floor(Math.random() * texts.length)]);
+        // Konuşurken yukarı zıplama animasyonu (Meme Style)
+        actor.el.classList.add('talking');
+        
+        // Metni uzunsa HTML tagları ile kırp, max karakter sınırlaması
+        let words = line.t.split(' ');
+        let formattedText = '';
+        for (let i = 0; i < words.length; i++) {
+            formattedText += words[i] + ' ';
+            if ((i+1) % 4 === 0) formattedText += '<br>';
         }
+        
+        actor.dlg.innerHTML = formattedText;
+        actor.dlg.classList.add('show');
+        
+        // Okuma süresi (karakter bazlı dinamik bekleme)
+        const readTime = Math.max(2500, line.t.length * 80);
+        await wait(readTime);
+        
+        // Metni kapat ve eski duruma dön
+        actor.dlg.classList.remove('show');
+        actor.el.classList.remove('talking');
+        if (line.angry) actor.el.classList.remove('angry');
+        
+        await wait(800); // Satırlar arası nefes alma süresi
     }
+    
+    // Z-indexleri sıfırla
+    scene.actors.forEach(id => {
+        actors[id].el.style.zIndex = "20";
+    });
 }
 
-function runSimulation() {
-    remainingSeconds--;
-    timerSpan.textContent = formatTime(remainingSeconds);
+function startEngine() {
+    startScreen.style.display = 'none';
+    shortsContainer.style.display = 'block';
+    
+    initScene();
+    runLoop();
+}
 
-    if (remainingSeconds <= 0) {
-        endSimulation();
-        return;
+async function runLoop() {
+    const endTime = Date.now() + (20 * 60 * 1000); // 20 Dakikalık döngü
+    
+    while(Date.now() < endTime) {
+        // Rastgele bir skeç/bölüm seç
+        const randomScene = scenarios[Math.floor(Math.random() * scenarios.length)];
+        
+        // Oynat
+        await playScenario(randomScene);
+        
+        // Skeçler arası 2-5 saniye sessizlik/bekleme
+        await wait(2000 + Math.random() * 3000);
     }
-
-    engineTick();
+    
+    // Simülasyon sonu
+    alert("20 Dakikalık Otomatik Çatışma ve Diyalog Hikayesi Sona Erdi.");
 }
 
-function endSimulation() {
-    clearInterval(simInterval);
-    isSimulationRunning = false;
-    document.getElementById('the-end').style.opacity = '1';
-    document.getElementById('the-end').style.pointerEvents = 'auto';
-    logCombat("SİMÜLASYON TAMAMLANDI VEYA DÜNYA HAKİMİYETİ SAĞLANDI.");
-}
-
-startBtn.addEventListener('click', () => {
-    document.getElementById('start-screen').style.display = 'none';
-    document.getElementById('simulation-container').style.display = 'block';
-    
-    spawnArmies();
-    logCombat("Savaş simülasyonu başlatıldı. Harita taraması devrede.");
-    
-    simInterval = setInterval(runSimulation, 1000);
-    isSimulationRunning = true;
-});
+// Event Listeners
+startBtn.addEventListener('click', startEngine);
